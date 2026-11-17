@@ -8,9 +8,9 @@ html, body {
 }
 
 #player1 {
-    width: 50px;
-    height: 50px;
-    background: blue;
+    width: 100px;
+    height: 100px;
+    background: gray;
     border-radius: 50%;
     position: absolute;
     left: 0;
@@ -18,9 +18,9 @@ html, body {
 }
 
 #player2 {
-    width: 50px;
-    height: 50px;
-    background: red;
+    width: 100px;
+    height: 100px;
+    background: gray;
     border-radius: 50%;
     position: absolute;
     left: 0;

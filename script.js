@@ -32,6 +32,9 @@ document.addEventListener("keyup", function (event) {
 function gameLoop() {
     if (gameOver) return;
 
+    const playerWidth = player1.offsetWidth;
+    const playerHeight = player1.offsetHeight;
+
     // PLAYER 1 MOVEMENT
     if (keys["w"]) y -= speed;
     if (keys["s"]) y += speed;
@@ -52,12 +55,14 @@ function gameLoop() {
     y2 = Math.max(0, Math.min(y2, window.innerHeight - player2.offsetHeight));
 
     // COLLISION BETWEEN PLAYERS
-    let dx = x2 - x;
-    let dy = y2 - y;
-    let distance = Math.sqrt(dx * dx + dy * dy);
+    let dx = (x2 + player2.offsetWidth / 2) - (x + player1.offsetWidth / 2);
+    let dy = (y2 + player2.offsetHeight / 2) - (y + player1.offsetHeight / 2);
 
-    if (distance < 50 && distance > 0) {
-        let overlap = 50 - distance;
+    let distance = Math.sqrt(dx * dx + dy * dy);
+    let minDistance = (player1.offsetWidth + player2.offsetWidth) / 2;
+
+    if (distance < minDistance && distance > 0) {
+        let overlap = minDistance - distance;
         let nx = dx / distance;
         let ny = dy / distance;
 
@@ -66,6 +71,13 @@ function gameLoop() {
 
         x2 += nx * (overlap / 2);
         y2 += ny * (overlap / 2);
+
+        // KEEP PLAYERS INSIDE THE SCREEN AFTER COLLISION
+        x = Math.max(0, Math.min(x, window.innerWidth - player1.offsetWidth));
+        y = Math.max(0, Math.min(y, window.innerHeight - player1.offsetHeight));
+
+        x2 = Math.max(0, Math.min(x2, window.innerWidth - player2.offsetWidth));
+        y2 = Math.max(0, Math.min(y2, window.innerHeight - player2.offsetHeight));
     }
 
     // UPDATE PLAYER POSITIONS
@@ -78,12 +90,14 @@ function gameLoop() {
         bullet.classList.add("bullet");
         document.body.appendChild(bullet);
 
-        let bulletX = x + player1.offsetWidth;
-        let bulletY = y + player1.offsetHeight / 2;
+        let bulletX = x + player1.offsetWidth / 2 - 5;
+        let bulletY = y + player1.offsetHeight / 2 - 5;
 
-        let dx = (x2 + player2.offsetWidth / 2) - bulletX;
-        let dy = (y2 + player2.offsetHeight / 2) - bulletY;
+        let targetX = x2 + player2.offsetWidth / 2;
+        let targetY = y2 + player2.offsetHeight / 2;
 
+        let dx = targetX - (bulletX + 5);
+        let dy = targetY - (bulletY + 5);
         let distance = Math.sqrt(dx * dx + dy * dy);
 
         if (distance > 0) {
@@ -108,12 +122,14 @@ function gameLoop() {
         bullet.classList.add("bullet");
         document.body.appendChild(bullet);
 
-        let bulletX = x2;
-        let bulletY = y2 + player2.offsetHeight / 2;
+        let bulletX = x2 + player2.offsetWidth / 2 - 5;
+        let bulletY = y2 + player2.offsetHeight / 2 - 5;
 
-        let dx = (x + player1.offsetWidth / 2) - bulletX;
-        let dy = (y + player1.offsetHeight / 2) - bulletY;
+        let targetX = x + player1.offsetWidth / 2;
+        let targetY = y + player1.offsetHeight / 2;
 
+        let dx = targetX - (bulletX + 5);
+        let dy = targetY - (bulletY + 5);
         let distance = Math.sqrt(dx * dx + dy * dy);
 
         if (distance > 0) {
@@ -147,9 +163,9 @@ function gameLoop() {
         // PLAYER 1 BULLET HITS PLAYER 2
         if (projectile.shooter === 1) {
             if (
-                projectile.x < x2 + 50 &&
+                projectile.x < x2 + player2.offsetWidth &&
                 projectile.x + 10 > x2 &&
-                projectile.y < y2 + 50 &&
+                projectile.y < y2 + player2.offsetHeight &&
                 projectile.y + 10 > y2
             ) {
                 health2 = Math.max(0, health2 - 10);
@@ -160,9 +176,9 @@ function gameLoop() {
         // PLAYER 2 BULLET HITS PLAYER 1
         if (projectile.shooter === 2) {
             if (
-                projectile.x < x + 50 &&
+                projectile.x < x + player1.offsetWidth &&
                 projectile.x + 10 > x &&
-                projectile.y < y + 50 &&
+                projectile.y < y + player1.offsetHeight &&
                 projectile.y + 10 > y
             ) {
                 health1 = Math.max(0, health1 - 10);
