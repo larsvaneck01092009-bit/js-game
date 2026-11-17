@@ -5,7 +5,7 @@ let x = 50;
 let y = 50;
 let x2 = 100;
 let y2 = 100;
-let speed = 4;
+let speed = 5;
 
 
 
