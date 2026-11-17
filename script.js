@@ -6,8 +6,10 @@ let y = 50;
 let x2 = 100;
 let y2 = 100;
 let speed = 5;
-
-
+let projectiles = [];
+let lastShot1 = 0;
+let lastShot2 = 0;
+let shootCooldown = 500;
 
 
 
@@ -23,7 +25,7 @@ document.addEventListener("keyup", function (event) {
 
 function gameLoop() {
     let dx = x2 - x;
-let dy = y2 - y;
+    let dy = y2 - y;
 
     if (keys["w"]) y -= speed;
     if (keys["s"]) y += speed;
@@ -65,18 +67,48 @@ let dy = y2 - y;
     }
     let distance = Math.sqrt(dx * dx + dy * dy);
     if (distance < 50 && distance > 0) {
-    let overlap = 50 - distance;
+        let overlap = 50 - distance;
 
-    let nx = dx / distance;
-    let ny = dy / distance;
+        let nx = dx / distance;
+        let ny = dy / distance;
 
-    x -= nx * (overlap / 2);
-    y -= ny * (overlap / 2);
+        x -= nx * (overlap / 2);
+        y -= ny * (overlap / 2);
 
-    x2 += nx * (overlap / 2);
-    y2 += ny * (overlap / 2);
+        x2 += nx * (overlap / 2);
+        y2 += ny * (overlap / 2);
     }
-    requestAnimationFrame(gameLoop);
+if (keys["f"] && Date.now() - lastShot1 > shootCooldown) {
+    let bullet = document.createElement("div");
+    bullet.classList.add("bullet");
+    document.body.appendChild(bullet);
+
+    projectiles.push({
+        x: x + player1.offsetWidth,
+        y: y + player1.offsetHeight / 2,
+        direction: 1,
+        element: bullet
+    });
+
+    lastShot1 = Date.now();
+}
+
+projectiles.forEach((projectile, index) => {
+    projectile.x += 7;
+
+    projectile.element.style.left = projectile.x + "px";
+    projectile.element.style.top = projectile.y + "px";
+
+
+    if (projectile.x > window.innerWidth) {
+        projectile.element.remove();
+        projectiles.splice(index, 1);
+    }
+});
+
+
+requestAnimationFrame(gameLoop);
+
 }
 
 gameLoop();
