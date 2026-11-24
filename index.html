@@ -13,9 +13,16 @@
     <img id="player2" src="player2.png"></img>
     <div id="winScreen">
     <h1 id="winnerText"></h1>
-    <button onclick="location.reload()">Play Again</button>
+    <p id="winMessage"></p>
+    <div id="upgradeOptions">
+        <button data-upgrade="speed" data-label="Faster player (+25%)">Faster player (+25%)</button>
+        <button data-upgrade="bulletSpeed" data-label="Faster bullets (+25%)">Faster bullets (+25%)</button>
+        <button data-upgrade="health" data-label="More HP (+25)">More HP (+25)</button>
+        <button data-upgrade="multiShot" data-label="Multi-shot (+1 bullet)">Multi-shot (+1 bullet)</button>
+        <button data-upgrade="damage" data-label="More damage (+10)">More damage (+10)</button>
+    </div>
 </div>
     <div id="bullet"></div>
-    <script src="script.js"></script>
+    <script src="script.js?v=7"></script>
 </body>
 </html>

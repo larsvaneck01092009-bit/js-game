@@ -54,8 +54,28 @@ html, body {
     font-size: 50px;
 }
 
-#winScreen button {
+#winMessage {
+    margin: 0 20px 20px;
+    font-size: 20px;
+    text-align: center;
+}
+
+#upgradeOptions {
+    display: none;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 12px;
+    max-width: 600px;
+    padding: 0 20px;
+}
+
+#upgradeOptions button {
     padding: 15px 30px;
     font-size: 20px;
     cursor: pointer;
+}
+
+#upgradeOptions button:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
 }

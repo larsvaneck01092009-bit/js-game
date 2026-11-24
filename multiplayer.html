@@ -1,0 +1,350 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multiplayer Lobby</title>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: #242424;
+            color: white;
+            font-family: Arial, sans-serif;
+        }
+
+        .lobby {
+            width: 90%;
+            max-width: 430px;
+            padding: 30px;
+            background: #353535;
+            border-radius: 15px;
+            text-align: center;
+            box-shadow: 0 10px 35px rgba(0,0,0,0.35);
+        }
+
+        h1 {
+            margin-top: 0;
+            font-size: 32px;
+        }
+
+        h2 {
+            margin-top: 25px;
+        }
+
+        button {
+            width: 100%;
+            padding: 14px;
+            margin-top: 12px;
+            border: none;
+            border-radius: 8px;
+            background: #2684ff;
+            color: white;
+            font-size: 17px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background: #126bd8;
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        input {
+            width: 100%;
+            padding: 14px;
+            margin-top: 12px;
+            border: none;
+            border-radius: 8px;
+            font-size: 18px;
+            text-align: center;
+        }
+
+        .room-code {
+            margin: 15px 0;
+            font-size: 34px;
+            font-weight: bold;
+            letter-spacing: 5px;
+            color: #ffd43b;
+        }
+
+        .status {
+            margin-top: 20px;
+            min-height: 24px;
+            color: #bdbdbd;
+        }
+
+        .divider {
+            margin: 25px 0;
+            border-top: 1px solid #555;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="lobby">
+
+        <h1>🎮 Game Lobby</h1>
+
+        <p>Create a room or join a friend's room.</p>
+
+        <button id="createButton" onclick="createRoom()">
+            Create Room
+        </button>
+
+        <div id="roomArea" style="display:none;">
+            <h2>Your Room Code</h2>
+            <div class="room-code" id="roomCodeDisplay"></div>
+            <p>Share this code with your friend!</p>
+        </div>
+
+        <div class="divider"></div>
+
+        <h2>Join a Room</h2>
+
+        <input
+            type="text"
+            id="joinCode"
+            placeholder="Enter 6-digit code"
+            maxlength="6"
+            inputmode="numeric"
+        >
+
+        <button id="joinButton" onclick="joinRoom()">
+            Join Room
+        </button>
+
+        <div class="status" id="status">
+            Waiting for players...
+        </div>
+
+    </div>
+
+    <script>
+
+        // Handles room creation, joining, and waiting for the second player.
+        const API_URL = "api.php";
+
+        let roomCode = null;
+        let playerNumber = null;
+        let playerToken = null;
+        let pollTimer = null;
+        let enteringGame = false;
+
+        const statusText = document.getElementById("status");
+
+        // ===================================
+        // SERVER REQUEST
+        // ===================================
+
+        // Send a JSON request to the PHP API and return its response.
+        async function sendRequest(data) {
+
+            const response = await fetch(API_URL, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify(data),
+                cache: "no-store"
+            });
+
+            const result = await response.json();
+
+            if (!response.ok || result.error) {
+                throw new Error(result.error || "Server error");
+            }
+
+            return result;
+        }
+
+        // ===================================
+        // SAVE PLAYER INFORMATION
+        // ===================================
+
+        // Store the room credentials so the game page can authenticate requests.
+        function savePlayer(result) {
+
+            roomCode = result.code;
+            playerNumber = String(result.player);
+            playerToken = result.token;
+
+            sessionStorage.setItem("roomCode", roomCode);
+            sessionStorage.setItem("playerNumber", playerNumber);
+            sessionStorage.setItem("playerToken", playerToken);
+        }
+
+        // ===================================
+        // CREATE ROOM
+        // ===================================
+
+        // Create a room, show its code, and wait for an opponent to join.
+        async function createRoom() {
+
+            const button = document.getElementById("createButton");
+
+            button.disabled = true;
+            statusText.textContent = "Creating room...";
+
+            try {
+
+                const result = await sendRequest({
+                    action: "create"
+                });
+
+                savePlayer(result);
+
+                document.getElementById("roomArea").style.display = "block";
+
+                document.getElementById("roomCodeDisplay").textContent =
+                    roomCode;
+
+                statusText.textContent =
+                    "Waiting for Player 2 to join...";
+
+                // Host waits for the second player
+                startCheckingRoom();
+
+            } catch (error) {
+
+                statusText.textContent = error.message;
+                button.disabled = false;
+
+            }
+        }
+
+        // ===================================
+        // JOIN ROOM
+        // ===================================
+
+        // Join the room entered by the player and continue to the game.
+        async function joinRoom() {
+
+            const code = document.getElementById("joinCode").value.trim();
+
+            if (!/^[0-9]{6}$/.test(code)) {
+                statusText.textContent =
+                    "Please enter a valid 6-digit room code.";
+                return;
+            }
+
+            const button = document.getElementById("joinButton");
+
+            button.disabled = true;
+            statusText.textContent = "Joining room...";
+
+            try {
+
+                const result = await sendRequest({
+                    action: "join",
+                    code: code
+                });
+
+                savePlayer(result);
+
+                statusText.textContent = "Player 2 joined! Starting game...";
+
+                // The server starts the room when Player 2 joins
+                enterGame();
+
+            } catch (error) {
+
+                statusText.textContent = error.message;
+                button.disabled = false;
+
+            }
+        }
+
+        // ===================================
+        // CHECK IF PLAYER 2 HAS JOINED
+        // ===================================
+
+        // Check the host's room state and enter the game once it has started.
+        async function checkRoom() {
+
+            if (enteringGame || !roomCode) return;
+
+            try {
+
+                const result = await sendRequest({
+                    action: "state",
+                    code: roomCode,
+                    player: playerNumber,
+                    token: playerToken
+                });
+
+                if (result.started) {
+
+                    statusText.textContent =
+                        "Player 2 joined! Starting game...";
+
+                    enterGame();
+
+                } else {
+
+                    statusText.textContent =
+                        "Waiting for Player 2 to join...";
+
+                }
+
+            } catch (error) {
+
+                statusText.textContent = error.message;
+
+            }
+        }
+
+        // ===================================
+        // CHECK ROOM REPEATEDLY
+        // ===================================
+
+        // Poll the host's room until Player 2 joins.
+        function startCheckingRoom() {
+
+            if (pollTimer) {
+                clearInterval(pollTimer);
+            }
+
+            checkRoom();
+
+            pollTimer = setInterval(checkRoom, 500);
+        }
+
+        // ===================================
+        // ENTER GAME
+        // ===================================
+
+        // Stop lobby polling and navigate to the multiplayer game.
+        function enterGame() {
+
+            if (enteringGame) return;
+
+            enteringGame = true;
+
+            if (pollTimer) {
+                clearInterval(pollTimer);
+            }
+
+            statusText.textContent = "Loading game...";
+
+            window.location.href = "index.html";
+        }
+
+    </script>
+
+</body>
+</html>

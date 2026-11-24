@@ -1,227 +1,466 @@
 
+// Runs the multiplayer match in the browser and syncs each player's state with api.php.
+const API_URL = "api.php";
+
+// Get the room information
+const roomCode = sessionStorage.getItem("roomCode");
+const playerNumber = Number(sessionStorage.getItem("playerNumber"));
+const playerToken = sessionStorage.getItem("playerToken");
+
+if (
+    !/^[0-9]{6}$/.test(roomCode || "") ||
+    ![1, 2].includes(playerNumber) ||
+    !playerToken
+) {
+    alert("Your multiplayer room information is invalid. Please return to the lobby and create or join a room again.");
+    throw new Error("Missing multiplayer information.");
+}
+
+// Game elements
 const player1 = document.getElementById("player1");
 const player2 = document.getElementById("player2");
+const health1 = document.getElementById("health1");
+const health2 = document.getElementById("health2");
+const winScreen = document.getElementById("winScreen");
+const winnerText = document.getElementById("winnerText");
+const winMessage = document.getElementById("winMessage");
+const upgradeOptions = document.getElementById("upgradeOptions");
+const remotePlayer = playerNumber === 1 ? player2 : player1;
 
-let x = 50;
+// Animate server updates to the remote player's position.
+remotePlayer.style.transition = "transform 100ms linear";
+player1.style.transformOrigin = "center center";
+player2.style.transformOrigin = "center center";
+
+// Player positions
+let x = playerNumber === 1 ? 50 : 1300;
 let y = 300;
-let x2 = 1300;
-let y2 = 300;
 
-let health1 = 100;
-let health2 = 100;
+let remoteX = playerNumber === 1 ? 1300 : 50;
+let remoteY = 300;
+let angle1 = 0;
+let angle2 = 0;
+
+let speed = 200;
+let lastFrameTime = performance.now();
+let checkingServer = false;
 let gameOver = false;
+let syncTimer;
 
-let speed = 5;
-let bulletSpeed = 20;
-let projectiles = [];
-
-let lastShot1 = 0;
-let lastShot2 = 0;
-let shootCooldown = 500;
-
+// Keyboard controls
 const keys = {};
 
-document.addEventListener("keydown", function (event) {
+document.addEventListener("keydown", (event) => {
     keys[event.key.toLowerCase()] = true;
+
+    if (
+        event.key === "Enter" ||
+        event.key.startsWith("Arrow")
+    ) {
+        event.preventDefault();
+    }
+
+    if (event.repeat || gameOver) return;
+
+    if (playerNumber === 1 && event.key.toLowerCase() === "f") {
+        shoot();
+    }
+
+    if (playerNumber === 2 && event.key === "Enter") {
+        shoot();
+    }
 });
 
-document.addEventListener("keyup", function (event) {
+document.addEventListener("keyup", (event) => {
     keys[event.key.toLowerCase()] = false;
 });
 
-function gameLoop() {
+window.addEventListener("blur", () => {
+    for (const key in keys) {
+        keys[key] = false;
+    }
+});
+
+// Bullet display container
+const bulletContainer = document.createElement("div");
+bulletContainer.style.position = "fixed";
+bulletContainer.style.left = "0";
+bulletContainer.style.top = "0";
+bulletContainer.style.width = "100%";
+bulletContainer.style.height = "100%";
+bulletContainer.style.pointerEvents = "none";
+bulletContainer.style.zIndex = "10";
+document.body.appendChild(bulletContainer);
+
+// Latest bullets received from the server
+let bullets = [];
+
+// Send an authenticated JSON request to the game API and return its response.
+async function sendRequest(data) {
+    const response = await fetch(API_URL, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+            ...data,
+            roomCode: roomCode,
+            playerNumber: playerNumber,
+            code: roomCode,
+            player: String(playerNumber),
+            token: playerToken
+        })
+    });
+
+    const result = await response.json();
+
+    if (!response.ok || result.error) {
+        const error = new Error(result.error || "Server request failed.");
+        error.status = response.status;
+        throw error;
+    }
+
+    return result;
+}
+
+// Ask the server to create a projectile for this player.
+async function shoot() {
     if (gameOver) return;
 
-    const playerWidth = player1.offsetWidth;
-    const playerHeight = player1.offsetHeight;
+    try {
+        const result = await sendRequest({
+            action: "shoot"
+        });
 
-    // PLAYER 1 MOVEMENT
-    if (keys["w"]) y -= speed;
-    if (keys["s"]) y += speed;
-    if (keys["a"]) x -= speed;
-    if (keys["d"]) x += speed;
-
-    // PLAYER 2 MOVEMENT
-    if (keys["arrowup"]) y2 -= speed;
-    if (keys["arrowdown"]) y2 += speed;
-    if (keys["arrowleft"]) x2 -= speed;
-    if (keys["arrowright"]) x2 += speed;
-
-    // KEEP PLAYERS INSIDE THE SCREEN
-    x = Math.max(0, Math.min(x, window.innerWidth - player1.offsetWidth));
-    y = Math.max(0, Math.min(y, window.innerHeight - player1.offsetHeight));
-
-    x2 = Math.max(0, Math.min(x2, window.innerWidth - player2.offsetWidth));
-    y2 = Math.max(0, Math.min(y2, window.innerHeight - player2.offsetHeight));
-
-    // COLLISION BETWEEN PLAYERS
-    let dx = (x2 + player2.offsetWidth / 2) - (x + player1.offsetWidth / 2);
-    let dy = (y2 + player2.offsetHeight / 2) - (y + player1.offsetHeight / 2);
-
-    let distance = Math.sqrt(dx * dx + dy * dy);
-    let minDistance = (player1.offsetWidth + player2.offsetWidth) / 2;
-
-    if (distance < minDistance && distance > 0) {
-        let overlap = minDistance - distance;
-        let nx = dx / distance;
-        let ny = dy / distance;
-
-        x -= nx * (overlap / 2);
-        y -= ny * (overlap / 2);
-
-        x2 += nx * (overlap / 2);
-        y2 += ny * (overlap / 2);
-
-        // KEEP PLAYERS INSIDE THE SCREEN AFTER COLLISION
-        x = Math.max(0, Math.min(x, window.innerWidth - player1.offsetWidth));
-        y = Math.max(0, Math.min(y, window.innerHeight - player1.offsetHeight));
-
-        x2 = Math.max(0, Math.min(x2, window.innerWidth - player2.offsetWidth));
-        y2 = Math.max(0, Math.min(y2, window.innerHeight - player2.offsetHeight));
-    }
-
-    // UPDATE PLAYER POSITIONS
-    player1.style.transform = `translate(${x}px, ${y}px)`;
-    player2.style.transform = `translate(${x2}px, ${y2}px)`;
-
-    // PLAYER 1 SHOOTS AT PLAYER 2
-    if (keys["f"] && Date.now() - lastShot1 > shootCooldown) {
-        let bullet = document.createElement("div");
-        bullet.classList.add("bullet");
-        document.body.appendChild(bullet);
-
-        let bulletX = x + player1.offsetWidth / 2 - 5;
-        let bulletY = y + player1.offsetHeight / 2 - 5;
-
-        let targetX = x2 + player2.offsetWidth / 2;
-        let targetY = y2 + player2.offsetHeight / 2;
-
-        let dx = targetX - (bulletX + 5);
-        let dy = targetY - (bulletY + 5);
-        let distance = Math.sqrt(dx * dx + dy * dy);
-
-        if (distance > 0) {
-            projectiles.push({
-                x: bulletX,
-                y: bulletY,
-                vx: (dx / distance) * bulletSpeed,
-                vy: (dy / distance) * bulletSpeed,
-                shooter: 1,
-                element: bullet
-            });
-        } else {
-            bullet.remove();
-        }
-
-        lastShot1 = Date.now();
-    }
-
-    // PLAYER 2 SHOOTS AT PLAYER 1
-    if (keys["enter"] && Date.now() - lastShot2 > shootCooldown) {
-        let bullet = document.createElement("div");
-        bullet.classList.add("bullet");
-        document.body.appendChild(bullet);
-
-        let bulletX = x2 + player2.offsetWidth / 2 - 5;
-        let bulletY = y2 + player2.offsetHeight / 2 - 5;
-
-        let targetX = x + player1.offsetWidth / 2;
-        let targetY = y + player1.offsetHeight / 2;
-
-        let dx = targetX - (bulletX + 5);
-        let dy = targetY - (bulletY + 5);
-        let distance = Math.sqrt(dx * dx + dy * dy);
-
-        if (distance > 0) {
-            projectiles.push({
-                x: bulletX,
-                y: bulletY,
-                vx: (dx / distance) * bulletSpeed,
-                vy: (dy / distance) * bulletSpeed,
-                shooter: 2,
-                element: bullet
-            });
-        } else {
-            bullet.remove();
-        }
-
-        lastShot2 = Date.now();
-    }
-
-    // MOVE BULLETS AND CHECK HITS
-    for (let index = projectiles.length - 1; index >= 0; index--) {
-        let projectile = projectiles[index];
-
-        projectile.x += projectile.vx;
-        projectile.y += projectile.vy;
-
-        projectile.element.style.transform =
-            `translate(${projectile.x}px, ${projectile.y}px)`;
-
-        let hitPlayer = false;
-
-        // PLAYER 1 BULLET HITS PLAYER 2
-        if (projectile.shooter === 1) {
-            if (
-                projectile.x < x2 + player2.offsetWidth &&
-                projectile.x + 10 > x2 &&
-                projectile.y < y2 + player2.offsetHeight &&
-                projectile.y + 10 > y2
-            ) {
-                health2 = Math.max(0, health2 - 10);
-                hitPlayer = true;
+        if (Number.isFinite(Number(result.angle))) {
+            if (playerNumber === 1) {
+                angle1 = Number(result.angle);
+            } else {
+                angle2 = Number(result.angle);
             }
-        }
 
-        // PLAYER 2 BULLET HITS PLAYER 1
-        if (projectile.shooter === 2) {
-            if (
-                projectile.x < x + player1.offsetWidth &&
-                projectile.x + 10 > x &&
-                projectile.y < y + player1.offsetHeight &&
-                projectile.y + 10 > y
-            ) {
-                health1 = Math.max(0, health1 - 10);
-                hitPlayer = true;
-            }
+            drawPlayers();
         }
-
-        // REMOVE HIT OR OFFSCREEN BULLETS
-        if (
-            hitPlayer ||
-            projectile.x > window.innerWidth ||
-            projectile.x < -10 ||
-            projectile.y > window.innerHeight ||
-            projectile.y < -10
-        ) {
-            projectile.element.remove();
-            projectiles.splice(index, 1);
+    } catch (error) {
+        // The server handles the shooting cooldown.
+        if (!error.message.toLowerCase().includes("cooldown")) {
+            console.error("Shooting error:", error);
         }
     }
+}
 
-    // UPDATE HEALTH TEXT
-    document.getElementById("health1").textContent =
-        "Player 1: " + health1 + " HP";
+// Push the local and remote players apart when their sprites overlap.
+function handleCollision() {
+    const dx = remoteX - x;
+    const dy = remoteY - y;
+    const distance = Math.sqrt(dx * dx + dy * dy);
 
-    document.getElementById("health2").textContent =
-        "Player 2: " + health2 + " HP";
+    const minimumDistance = 100;
 
-    // CHECK WINNER
-    if (health1 <= 0) {
-        gameOver = true;
-        document.getElementById("winnerText").textContent = "PLAYER 2 WINS!";
-        document.getElementById("winScreen").style.display = "flex";
-        return;
+    if (distance < minimumDistance && distance > 0) {
+        const overlap = minimumDistance - distance;
+        const pushX = (dx / distance) * overlap / 2;
+        const pushY = (dy / distance) * overlap / 2;
+
+        x -= pushX;
+        y -= pushY;
+
+        remoteX += pushX;
+        remoteY += pushY;
+    }
+}
+
+// Render both players, mapping local and remote positions to their player numbers.
+function drawPlayers() {
+    if (playerNumber === 1) {
+        player1.style.transform = `translate(${x}px, ${y}px) rotate(${angle1}deg)`;
+        player2.style.transform = `translate(${remoteX}px, ${remoteY}px) rotate(${angle2}deg)`;
+    } else {
+        player2.style.transform = `translate(${x}px, ${y}px) rotate(${angle2}deg)`;
+        player1.style.transform = `translate(${remoteX}px, ${remoteY}px) rotate(${angle1}deg)`;
+    }
+}
+
+// Draw bullets smoothly between server updates
+function drawBullets() {
+    bulletContainer.innerHTML = "";
+
+    const now = performance.now();
+
+    for (const bullet of bullets) {
+        // Predict where the bullet should be between server updates.
+        const elapsed = Math.min(
+            (now - bullet.receivedAt) / 1000,
+            0.15
+        );
+
+        const visualX = Number(bullet.x) + Number(bullet.vx) * elapsed;
+        const visualY = Number(bullet.y) + Number(bullet.vy) * elapsed;
+
+        const bulletElement = document.createElement("div");
+
+        bulletElement.style.position = "absolute";
+        bulletElement.style.width = "10px";
+        bulletElement.style.height = "10px";
+        bulletElement.style.backgroundColor = "yellow";
+        bulletElement.style.borderRadius = "50%";
+        bulletElement.style.left = `${visualX}px`;
+        bulletElement.style.top = `${visualY}px`;
+
+        bulletContainer.appendChild(bulletElement);
+    }
+}
+
+// Display each player's latest health value returned by the server.
+function updateHealth(health) {
+    if (!health) return;
+
+    if (health1) {
+        health1.textContent = `Player 1: ${health["1"] ?? health[1] ?? 100} HP`;
     }
 
-    if (health2 <= 0) {
-        gameOver = true;
-        document.getElementById("winnerText").textContent = "PLAYER 1 WINS!";
-        document.getElementById("winScreen").style.display = "flex";
-        return;
+    if (health2) {
+        health2.textContent = `Player 2: ${health["2"] ?? health[2] ?? 100} HP`;
     }
+}
+
+// Stop player input and show the winning player's result.
+function showWinner(winner, players) {
+    if (!winner || gameOver) return;
+
+    gameOver = true;
+
+    if (winnerText) {
+        winnerText.textContent = Number(winner) === playerNumber
+            ? "You win!"
+            : "You lost!";
+    }
+
+    if (winMessage) {
+        winMessage.textContent = Number(winner) === playerNumber
+            ? "Waiting for the other player to choose an upgrade..."
+            : "Choose one upgrade for the next round:";
+    }
+
+    if (upgradeOptions) {
+        upgradeOptions.style.display = Number(winner) === playerNumber ? "none" : "flex";
+
+        upgradeOptions.querySelectorAll("button").forEach((button) => {
+            button.disabled = false;
+            button.textContent = button.dataset.label;
+        });
+    }
+
+    if (winScreen) {
+        winScreen.style.display = "flex";
+    }
+
+    for (const key in keys) {
+        keys[key] = false;
+    }
+}
+
+// Reset local match state after the loser selects an upgrade.
+function startNextRound() {
+    gameOver = false;
+    x = playerNumber === 1 ? 50 : 1300;
+    y = 300;
+    remoteX = playerNumber === 1 ? 1300 : 50;
+    remoteY = 300;
+    angle1 = 0;
+    angle2 = 0;
+    bullets = [];
+
+    if (winScreen) {
+        winScreen.style.display = "none";
+    }
+
+    drawPlayers();
+}
+
+// Submit the loser's choice; the server applies it and starts the rematch.
+async function chooseUpgrade(event) {
+    const buttons = upgradeOptions.querySelectorAll("button");
+    buttons.forEach((button) => {
+        button.disabled = true;
+    });
+
+    if (winMessage) {
+        winMessage.textContent = "Applying upgrade and starting the next round...";
+    }
+
+    try {
+        await sendRequest({
+            action: "upgrade",
+            upgrade: event.currentTarget.dataset.upgrade
+        });
+        startNextRound();
+    } catch (error) {
+        console.error("Upgrade error:", error);
+        if (winMessage) {
+            winMessage.textContent = error.message;
+        }
+        buttons.forEach((button) => {
+            button.disabled = false;
+        });
+    }
+}
+
+upgradeOptions?.querySelectorAll("button").forEach((button) => {
+    button.addEventListener("click", chooseUpgrade);
+});
+
+// Read a player's position while supporting the server's possible key formats.
+function getPlayerPosition(players, number) {
+    if (!players) return null;
+
+    return (
+        players[String(number)] ||
+        players[`player${number}`] ||
+        players[number] ||
+        null
+    );
+}
+
+// Apply local movement and redraw the game continuously using animation frames.
+function gameLoop() {
+    const now = performance.now();
+
+    let deltaTime = (now - lastFrameTime) / 1000;
+    lastFrameTime = now;
+
+    // Prevent large movement jumps if the browser pauses.
+    deltaTime = Math.min(deltaTime, 0.05);
+
+    if (!gameOver) {
+        // Player 1: WASD
+        // Player 2: Arrow keys
+        if (playerNumber === 1) {
+            if (keys["w"]) y -= speed * deltaTime;
+            if (keys["s"]) y += speed * deltaTime;
+            if (keys["a"]) x -= speed * deltaTime;
+            if (keys["d"]) x += speed * deltaTime;
+        } else {
+            if (keys["arrowup"]) y -= speed * deltaTime;
+            if (keys["arrowdown"]) y += speed * deltaTime;
+            if (keys["arrowleft"]) x -= speed * deltaTime;
+            if (keys["arrowright"]) x += speed * deltaTime;
+        }
+
+        // Keep the player inside the screen
+        x = Math.max(0, Math.min(window.innerWidth - 100, x));
+        y = Math.max(0, Math.min(window.innerHeight - 100, y));
+
+        handleCollision();
+    }
+
+    drawPlayers();
+    drawBullets();
 
     requestAnimationFrame(gameLoop);
 }
 
+// Upload this player's position, then apply the latest remote position and game state.
+async function syncGame() {
+    if (checkingServer) return;
+
+    checkingServer = true;
+
+    try {
+        if (!gameOver) {
+            await sendRequest({
+                action: "update",
+                x: x,
+                y: y
+            });
+        }
+
+        // Get the latest game state
+        const result = await sendRequest({
+            action: "state"
+        });
+
+        if (gameOver && !result.winner && result.started) {
+            startNextRound();
+        }
+
+        if (result.players) {
+            const ownPlayer = getPlayerPosition(result.players, playerNumber);
+            const upgrades = ownPlayer?.upgrades || {};
+            speed = 300 * (1 + 0.25 * Number(upgrades.speed || 0));
+
+            const otherPlayerNumber = playerNumber === 1 ? 2 : 1;
+            const otherPlayer = getPlayerPosition(
+                result.players,
+                otherPlayerNumber
+            );
+
+            if (otherPlayer && otherPlayer.x !== null && otherPlayer.y !== null) {
+                const nextX = Number(otherPlayer.x);
+                const nextY = Number(otherPlayer.y);
+
+                if (Number.isFinite(nextX) && Number.isFinite(nextY)) {
+                    remoteX = nextX;
+                    remoteY = nextY;
+
+                    const nextAngle = Number(otherPlayer.angle);
+                    if (Number.isFinite(nextAngle)) {
+                        if (otherPlayerNumber === 1) {
+                            angle1 = nextAngle;
+                        } else {
+                            angle2 = nextAngle;
+                        }
+                    }
+
+                    drawPlayers();
+                }
+            }
+        }
+
+        // Save the server's latest bullet positions.
+        // receivedAt lets the browser animate them between updates.
+        if (Array.isArray(result.bullets)) {
+            const receivedAt = performance.now();
+
+            bullets = result.bullets.map((bullet) => ({
+                ...bullet,
+                receivedAt: receivedAt
+            }));
+        }
+
+        updateHealth(result.health);
+
+        if (result.winner) {
+            showWinner(result.winner, result.players);
+        }
+
+    } catch (error) {
+        console.error("Multiplayer sync error:", error);
+
+        if ([400, 403, 404].includes(error.status)) {
+            clearInterval(syncTimer);
+            sessionStorage.removeItem("roomCode");
+            sessionStorage.removeItem("playerNumber");
+            sessionStorage.removeItem("playerToken");
+            alert("This multiplayer room is no longer valid. Please return to the lobby and create or join a room again.");
+            window.location.href = "multiplayer.html";
+        }
+    }
+
+    checkingServer = false;
+}
+
+// Refresh immediately when returning to a tab that may have been throttled in the background.
+document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) {
+        syncGame();
+    }
+});
+
+// Start the game
+drawPlayers();
 requestAnimationFrame(gameLoop);
+syncGame();
+
+// Poll often enough for responsive movement without flooding the server.
+syncTimer = setInterval(syncGame, 10);
