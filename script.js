@@ -26,18 +26,20 @@ const winnerText = document.getElementById("winnerText");
 const winMessage = document.getElementById("winMessage");
 const upgradeOptions = document.getElementById("upgradeOptions");
 const remotePlayer = playerNumber === 1 ? player2 : player1;
+const WORLD_WIDTH = 1400;
+const WORLD_HEIGHT = 800;
 
 // Animate server updates to the remote player's position.
 remotePlayer.style.transition = "transform 100ms linear";
-player1.style.transformOrigin = "center center";
-player2.style.transformOrigin = "center center";
+player1.style.transformOrigin = "top left";
+player2.style.transformOrigin = "top left";
 
 // Player positions
-let x = playerNumber === 1 ? 50 : 1300;
-let y = 300;
+let x = playerNumber === 1 ? 50 : 1250;
+let y = 350;
 
-let remoteX = playerNumber === 1 ? 1300 : 50;
-let remoteY = 300;
+let remoteX = playerNumber === 1 ? 1250 : 50;
+let remoteY = 350;
 let angle1 = 0;
 let angle2 = 0;
 
@@ -170,14 +172,37 @@ function handleCollision() {
     }
 }
 
+// Fit the same game world inside each player's viewport.
+function getGameScale() {
+    const scale = Math.min(
+        window.innerWidth / WORLD_WIDTH,
+        window.innerHeight / WORLD_HEIGHT
+    );
+
+    const offsetX = (window.innerWidth - WORLD_WIDTH * scale) / 2;
+    const offsetY = (window.innerHeight - WORLD_HEIGHT * scale) / 2;
+
+    return { scale, offsetX, offsetY };
+}
+
 // Render both players, mapping local and remote positions to their player numbers.
 function drawPlayers() {
+    const view = getGameScale();
+    const screenX = view.offsetX + x * view.scale;
+    const screenY = view.offsetY + y * view.scale;
+    const remoteScreenX = view.offsetX + remoteX * view.scale;
+    const remoteScreenY = view.offsetY + remoteY * view.scale;
+
     if (playerNumber === 1) {
-        player1.style.transform = `translate(${x}px, ${y}px) rotate(${angle1}deg)`;
-        player2.style.transform = `translate(${remoteX}px, ${remoteY}px) rotate(${angle2}deg)`;
+        player1.style.transform =
+            `translate(${screenX}px, ${screenY}px) scale(${view.scale}) rotate(${angle1}deg)`;
+        player2.style.transform =
+            `translate(${remoteScreenX}px, ${remoteScreenY}px) scale(${view.scale}) rotate(${angle2}deg)`;
     } else {
-        player2.style.transform = `translate(${x}px, ${y}px) rotate(${angle2}deg)`;
-        player1.style.transform = `translate(${remoteX}px, ${remoteY}px) rotate(${angle1}deg)`;
+        player2.style.transform =
+            `translate(${screenX}px, ${screenY}px) scale(${view.scale}) rotate(${angle2}deg)`;
+        player1.style.transform =
+            `translate(${remoteScreenX}px, ${remoteScreenY}px) scale(${view.scale}) rotate(${angle1}deg)`;
     }
 }
 
@@ -186,6 +211,7 @@ function drawBullets() {
     bulletContainer.innerHTML = "";
 
     const now = performance.now();
+    const view = getGameScale();
 
     for (const bullet of bullets) {
         // Predict where the bullet should be between server updates.
@@ -200,12 +226,14 @@ function drawBullets() {
         const bulletElement = document.createElement("div");
 
         bulletElement.style.position = "absolute";
-        bulletElement.style.width = "10px";
-        bulletElement.style.height = "10px";
+        bulletElement.style.width = `${10 * view.scale}px`;
+        bulletElement.style.height = `${10 * view.scale}px`;
         bulletElement.style.backgroundColor = "yellow";
         bulletElement.style.borderRadius = "50%";
-        bulletElement.style.left = `${visualX}px`;
-        bulletElement.style.top = `${visualY}px`;
+        bulletElement.style.left =
+            `${view.offsetX + visualX * view.scale}px`;
+        bulletElement.style.top =
+            `${view.offsetY + visualY * view.scale}px`;
 
         bulletContainer.appendChild(bulletElement);
     }
@@ -263,10 +291,10 @@ function showWinner(winner, players) {
 // Reset local match state after the loser selects an upgrade.
 function startNextRound() {
     gameOver = false;
-    x = playerNumber === 1 ? 50 : 1300;
-    y = 300;
-    remoteX = playerNumber === 1 ? 1300 : 50;
-    remoteY = 300;
+    x = playerNumber === 1 ? 50 : 1250;
+    y = 350;
+    remoteX = playerNumber === 1 ? 1250 : 50;
+    remoteY = 350;
     angle1 = 0;
     angle2 = 0;
     bullets = [];
@@ -347,11 +375,9 @@ function gameLoop() {
             if (keys["arrowright"]) x += speed * deltaTime;
         }
 
-        // Keep the player inside the screen
-        x = Math.max(0, Math.min(window.innerWidth - 100, x));
-        y = Math.max(0, Math.min(window.innerHeight - 100, y));
-
         handleCollision();
+        x = Math.max(0, Math.min(WORLD_WIDTH - 100, x));
+        y = Math.max(0, Math.min(WORLD_HEIGHT - 100, y));
     }
 
     drawPlayers();
